@@ -39,7 +39,7 @@ names.forEach((name, cinema) => {
   }));
 });
 let asOf = 1;
-let synced = false, cloudEdits = {}, revisions = {};
+let synced = false, syncing = false, cloudEdits = {}, revisions = {};
 const pending = new Set();
 const all = () => tasks.map(t=>({...t,...(synced?cloudEdits[t.id]:undefined)}));
 const day = n => !n?'تعیین نشده':fa(n<=30?n:n-30)+' '+(n<=30?'آذر':'دی');
@@ -62,7 +62,8 @@ const go = (where,index) => {
 function render() {
   $('nav').innerHTML='<div class="navlabel">برنامه</div>'+labels.map(([id,icon,title])=>`<button data-go="${id}" class="${route===id?'active':''}"><i>${ic(id)}</i>${title}</button>`).join('')+
   '<div class="navlabel">سینماها</div>'+groups.flat().map(i=>`<button data-go="cinema" data-cinema="${i}" class="${route==='cinema'&&cinema===i?'active':''}"><i>${ic('cinema')}</i>${names[i]}</button>`).join('');
-  $('account').textContent=synced?'فضای کاری متصل':'اتصال به فضای کاری';
+  $('account').textContent=syncing?'در حال دریافت…':synced?'تازه‌سازی اقدامات':'تلاش دوباره برای اتصال';
+  $('account').disabled=syncing;
   const label = route==='cinema'?names[cinema]:labels.find(x=>x[0]===route)[2];
   $('crumb').textContent='بهمن سبز / هشت سینما / '+label;
   const pages={home:overview,list:()=>work(false),board:()=>work(true),cinema:cinemaPage,common:commonPage,docs:docsPage,calendar:calendarPage,weekly:weeklyPage};
@@ -89,7 +90,7 @@ function selectedRows() {
 }
 function work(board) {
   const select=(field,title,items)=>`<select aria-label="${title}" data-filter="${field}">${option('',title,filters[field])}${items.map(([v,l])=>option(v,l,filters[field])).join('')}</select>`;
-  return heading(board?'برد کانبان':'جدول برنامه‌ریزی',board?(synced?'کارت را باز کنید یا به ستون وضعیت جدید بکشید.':'برای جابه‌جایی کارت‌ها به فضای کاری وصل شوید.'):'مسئول، موعد و وضعیت اقدامات همه سینماها','<button data-go="'+(board?'list':'board')+'">'+(board?'نمای جدول':'نمای برد')+'</button>')+
+  return heading(board?'برد کانبان':'جدول برنامه‌ریزی',board?(synced?'کارت را باز کنید یا به ستون وضعیت جدید بکشید.':'جابه‌جایی کارت‌ها پس از دریافت داده‌های Supabase فعال می‌شود.'):'مسئول، موعد و وضعیت اقدامات همه سینماها','<button data-go="'+(board?'list':'board')+'">'+(board?'نمای جدول':'نمای برد')+'</button>')+
   `<div class="filters"><input id="query" aria-label="جست‌وجوی اقدام" placeholder="جست‌وجو در متن، سینما یا شناسه" value="${esc(filters.q)}">${select('cinema','همه سینماها',names.map((n,i)=>[i,n]))}${select('kind','همه انواع',['عمومی','اختصاصی'].map(n=>[n,n]))}${select('status','همه وضعیت‌ها',statuses.map((n,i)=>[i,n]))}${select('attention','همه موعدها و موانع',[['any','نیازمند پیگیری'],['late','معوق'],['blocked','دارای مانع']])}${select('owner','همه مسئولان',[...new Set(all().map(t=>t.owner))].filter(Boolean).map(n=>[n,n]))}</div><div id="results">${result(board)}</div>`;
 }
 function badges(t) {
@@ -154,7 +155,7 @@ function openTask(id) {
   <label class="wide">خروجی مورد انتظار<textarea name="output">${esc(t.output)}</textarea></label>
   <label class="wide">${ic('list')} آخرین پیگیری / گام بعدی<textarea name="note">${esc(t.note)}</textarea></label>
   <label class="wide">مستند اجرا یا پیوند آن<textarea name="evidence">${esc(t.evidence)}</textarea></label>
-  </fieldset><details><summary>تاریخچه تغییرات (${fa(t.history.length)})</summary>${t.history.map(item=>`<div><small>${esc(item.date)}</small>${esc(item.text)}</div>`).join('')||'تغییری ثبت نشده است.'}</details></div><footer>${synced?'<button class="primary" type="submit">ذخیره تغییرات</button>':'<button class="primary" type="button" data-connect>اتصال برای ویرایش</button>'}<button type="button" data-close>بستن</button></footer></form>`;
+  </fieldset><details><summary>تاریخچه تغییرات (${fa(t.history.length)})</summary>${t.history.map(item=>`<div><small>${esc(item.date)}</small>${esc(item.text)}</div>`).join('')||'تغییری ثبت نشده است.'}</details></div><footer>${synced?'<button class="primary" type="submit">ذخیره تغییرات</button>':'<button class="primary" type="button" data-connect>دریافت آخرین اطلاعات</button>'}<button type="button" data-close>بستن</button></footer></form>`;
   $('detail').showModal();
 }
 let toastTimer;
@@ -163,7 +164,7 @@ function toast(message) {
   clearTimeout(toastTimer); toastTimer=setTimeout(()=>$('toast').classList.remove('show'),3000);
 }
 async function updateTask(id,changes) {
-  if(!synced){toast('برای ذخیره در Supabase به فضای کاری وصل شوید.');return false;}
+  if(!synced||syncing){toast('ابتدا منتظر دریافت اطلاعات از Supabase بمانید.');return false;}
   if(pending.has(id)) return false;
   const old=all().find(t=>t.id===id);
   const fieldNames={status:'وضعیت',due:'موعد',owner:'مسئول',blocked:'مانع',note:'پیگیری',output:'خروجی',evidence:'مستند',start:'شروع',progress:'پیشرفت'};
@@ -176,17 +177,12 @@ async function updateTask(id,changes) {
   try {
     const saved=await CinemaCloud.save(id,next,revisions[id]||0);
     revisions[id]=saved.revision;
-    cloudEdits[id]=saved.changes;
+    cloudEdits[id]=readChanges(saved.changes);
   } catch(error) {
     if(error.status===409) {
-      try {await refreshCloud();} catch {}
+      try {await refreshCloud(true);} catch {}
       $('detail').close();
       toast('کارت هم‌زمان تغییر کرد. دوباره آن را باز کنید.');
-    } else if(!CinemaCloud.signedIn()||error.status===401) {
-      CinemaCloud.logout();
-      synced=false;
-      render();
-      toast('اتصال به فضای کاری قطع شده است. دوباره وارد شوید.');
     } else toast('ذخیره در Supabase انجام نشد. دوباره تلاش کنید.');
     return false;
   } finally {pending.delete(id);}
@@ -232,37 +228,35 @@ document.addEventListener('drop',e=>{
 });
 render();
 
-async function refreshCloud() {
-  const rows=await CinemaCloud.load();
-  cloudEdits=Object.fromEntries(rows.map(row=>[row.card_id,row.changes]));
-  revisions=Object.fromEntries(rows.map(row=>[row.card_id,row.revision]));
-  synced=true;
+async function refreshCloud(afterConflict=false) {
+  if(syncing||(!afterConflict&&pending.size)){toast('عملیات قبلی در حال انجام است.');return;}
+  syncing=true;
   render();
-}
-$('account').addEventListener('click',()=>{
-  if(pending.size){toast('ذخیره در حال انجام است.');return;}
-  if(synced){
-    $('login').innerHTML='<div class="section-head"><h2>فضای کاری بهمن سبز</h2></div><div class="padded"><p>تغییرات کارت‌ها در Supabase ذخیره می‌شوند.</p><button id="cloudRefresh">دریافت آخرین تغییرات</button> <button id="cloudLogout">خروج از فضای کاری</button> <button id="dismissLogin">بستن</button></div>';
-    $('cloudRefresh').onclick=async()=>{try{await refreshCloud();$('login').close();toast('آخرین اطلاعات دریافت شد.');}catch{toast('دریافت اطلاعات انجام نشد.');}};
-    $('cloudLogout').onclick=()=>{CinemaCloud.logout();synced=false;render();$('login').close();};
-  } else {
-    $('login').innerHTML='<form class="padded"><h2>ورود به فضای کاری بهمن سبز</h2><p class="syncState">برای ویرایش و ذخیره مشترک کارت‌ها با حساب مجاز Supabase وارد شوید.</p><label>ایمیل<input name="email" type="email" dir="ltr" required autocomplete="username"></label><label>رمز عبور<input name="password" type="password" dir="ltr" required autocomplete="current-password"></label><p id="loginStatus" role="status"></p><button class="primary">ورود</button> <button type="button" id="dismissLogin">بستن</button></form>';
-    $('login').querySelector('form').onsubmit=async event=>{
-      event.preventDefault();
-      const data=new FormData(event.target),submit=event.submitter;
-      submit.disabled=true;
-      try {
-        await CinemaCloud.login(data.get('email').trim(),data.get('password'));
-        await refreshCloud(); $('login').close(); toast('فضای کاری Supabase متصل شد.');
-      } catch(error) {
-        CinemaCloud.logout();
-        $('loginStatus').textContent=error.status===403?'این حساب عضو فضای کاری هشت سینما نیست.':'ورود انجام نشد. اطلاعات حساب یا اتصال را بررسی کنید.';
-      } finally {submit.disabled=false;}
-    };
+  try {
+    const rows=await CinemaCloud.load();
+    cloudEdits=Object.fromEntries(rows.map(row=>[row.card_id,readChanges(row.changes)]));
+    revisions=Object.fromEntries(rows.map(row=>[row.card_id,row.revision]));
+    synced=true;
+  } finally {
+    syncing=false;
+    render();
   }
-  $('dismissLogin').onclick=()=>$('login').close();
-  $('login').showModal();
-});
+}
+function readChanges(raw) {
+  const data=raw||{},changes={};
+  for(const key of ['owner','note','output','evidence']) {
+    if(typeof data[key]==='string') changes[key]=data[key];
+  }
+  for(const key of ['due','start']) {
+    if(data[key]===null||(Number.isInteger(data[key])&&data[key]>=1&&data[key]<=40)) changes[key]=data[key];
+  }
+  if(Number.isInteger(data.status)&&data.status>=0&&data.status<=3) changes.status=data.status;
+  if(Number.isInteger(data.progress)&&data.progress>=0&&data.progress<=100) changes.progress=data.progress;
+  if(typeof data.blocked==='boolean') changes.blocked=data.blocked;
+  if(Array.isArray(data.history)) changes.history=data.history.filter(item=>typeof item?.date==='string'&&typeof item?.text==='string');
+  return changes;
+}
+$('account').addEventListener('click',()=>refreshCloud().catch(()=>toast('دریافت اطلاعات از Supabase انجام نشد.')));
 $('globalSearch').innerHTML=ic('search')+' جست‌وجوی اقدام';
 $('theme').innerHTML=ic('theme');
 try {document.body.dataset.theme=localStorage.getItem('bahman-theme')||'light';} catch {}
@@ -270,4 +264,4 @@ $('theme').onclick=()=>{
   document.body.dataset.theme=document.body.dataset.theme==='dark'?'light':'dark';
   try {localStorage.setItem('bahman-theme',document.body.dataset.theme);} catch {}
 };
-if(CinemaCloud.configured&&CinemaCloud.signedIn()) refreshCloud().catch(()=>toast('اتصال به فضای کاری برقرار نشد.'));
+refreshCloud().catch(()=>toast('اتصال به Supabase برقرار نشد. دوباره تلاش کنید.'));
