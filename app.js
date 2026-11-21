@@ -41,7 +41,13 @@ names.forEach((name, cinema) => {
 let asOf = 1;
 let synced = false, syncing = false, cloudEdits = {}, revisions = {};
 const pending = new Set();
-const all = () => tasks.map(t=>({...t,...(synced?cloudEdits[t.id]:undefined)}));
+const addedId = /^N-[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/;
+const all = () => [
+  ...tasks.map(t=>({...t,...cloudEdits[t.id],cinema:t.cinema,kind:t.kind})),
+  ...Object.entries(cloudEdits).flatMap(([id,changes])=>addedId.test(id)&&Number.isInteger(changes.cinema)&&changes.title&&changes.kind
+    ? [{...initialTracking,id,number:'افزوده‌شده',...changes}] : [])
+].filter(t=>!t.deleted);
+const addButton = '<button class="primary" type="button" data-add>＋ افزودن اقدام</button>';
 const day = n => !n?'تعیین نشده':fa(n<=30?n:n-30)+' '+(n<=30?'آذر':'دی');
 const count = (rows,fn) => rows.filter(fn).length;
 const late = t => Boolean(t.due) && t.due<asOf && t.status!==3;
@@ -72,14 +78,14 @@ function render() {
 function overview() {
   const rows=all(), done=count(rows,t=>t.status===3), overdue=count(rows,late), blocked=count(rows,t=>t.blocked&&t.status!==3);
   const groupRows=groups.map((indices,g)=>`<tr class="group"><td colspan="5">${esc(DOCS[2].find(Array.isArray)[g][0])}</td></tr>`+indices.map(i=>{
-    const local=rows.filter(t=>t.cinema===i), complete=count(local,t=>t.status===3), percent=Math.round(100*complete/local.length);
+    const local=rows.filter(t=>t.cinema===i), complete=count(local,t=>t.status===3), percent=local.length?Math.round(100*complete/local.length):0;
     return `<tr><td><button class="link" data-go="cinema" data-cinema="${i}">${names[i]}</button></td><td>${fa(complete)} از ${fa(local.length)}<div class="progress"><b style="width:${percent}%"></b></div></td><td>${fa(count(local,late))}</td><td>${fa(count(local,t=>t.blocked&&t.status!==3))}</td><td>${local.some(t=>t.history.length)?'ثبت شده':'ثبت نشده'}</td></tr>`;
   }).join('')).join('');
   const cinemaCards=groups.map((indices,g)=>`<div class="cinema-group"><h3>${esc(DOCS[2].find(Array.isArray)[g][0])}</h3><div class="cinema-grid">${indices.map(i=>{
-    const local=rows.filter(t=>t.cinema===i),complete=count(local,t=>t.status===3),percent=Math.round(100*complete/local.length);
+    const local=rows.filter(t=>t.cinema===i),complete=count(local,t=>t.status===3),percent=local.length?Math.round(100*complete/local.length):0;
     return `<button class="cinema-tile" data-go="cinema" data-cinema="${i}"><span class="iconwrap">${ic('cinema')} <strong>${names[i]}</strong></span><span class="rowflex"><small>${fa(complete)} از ${fa(local.length)} تکمیل</small><small>${fa(percent)}٪</small></span><span class="progress"><b style="width:${percent}%"></b></span><small>${fa(count(local,late))} معوق · ${fa(count(local,t=>t.blocked&&t.status!==3))} مانع</small></button>`;
   }).join('')}</div></div>`).join('');
-  return heading('نمای کل برنامه','رصد و پایش توسعه مخاطب شبکه سینماهای بهمن سبز','<button class="primary" data-go="board">مشاهده برد کانبان</button>')+
+  return heading('نمای کل برنامه','رصد و پایش توسعه مخاطب شبکه سینماهای بهمن سبز','<div class="tabs">'+addButton+'<button data-go="board">مشاهده برد کانبان</button></div>')+
   `<section class="hero rowflex"><div><h2>برنامه عملیاتی ۴۰روزه</h2><p>۱ آذر تا ۱۰ دی ۱۴۰۵</p></div><label>تاریخ مبنای رصد <select id="asof">${Array.from({length:40},(_,i)=>option(i+1,day(i+1),asOf)).join('')}</select></label></section>`+
   `<div class="stats">${[['سینماهای منتخب',8],['اقدام تکمیل‌شده',done],['اقدام معوق',overdue],['اقدام دارای مانع',blocked]].map(([l,n],i)=>`<div class="stat"><span class="symbol">${ic(['cinema','done','weekly','alert'][i])}</span><span>${l}</span><strong>${fa(n)}</strong></div>`).join('')}</div>`+
   `<div class="dashboard-grid"><section class="panel"><div class="section-head"><h2>${ic('cinema')} وضعیت هشت سینما</h2><button data-home-mode>${homeMode==='cards'?ic('list')+' نمای جدول':ic('home')+' نمای کارت'}</button></div>${homeMode==='cards'?cinemaCards:`<div class="scroll"><table><thead><tr><th>سینما</th><th>تکمیل اقدامات</th><th>معوق</th><th>مانع</th><th>ثبت پیگیری</th></tr></thead><tbody>${groupRows}</tbody></table></div>`}</section><section class="panel"><div class="section-head"><h2>${ic('alert')} نیازمند پیگیری</h2><button class="link" data-attention>همه موارد</button></div>${rows.filter(t=>t.status!==3&&(t.blocked||late(t))).sort((a,b)=>Number(b.blocked)-Number(a.blocked)||a.due-b.due).slice(0,6).map(t=>`<button class="attention" data-task="${t.id}"><b class="ellipsis">${esc(t.title)}</b><span>${names[t.cinema]} · ${day(t.due)} · ${t.blocked?'دارای مانع':'معوق'}</span></button>`).join('')||empty('موردی برای پیگیری فوری ثبت نشده است.')}</section></div>`;
@@ -90,7 +96,7 @@ function selectedRows() {
 }
 function work(board) {
   const select=(field,title,items)=>`<select aria-label="${title}" data-filter="${field}">${option('',title,filters[field])}${items.map(([v,l])=>option(v,l,filters[field])).join('')}</select>`;
-  return heading(board?'برد کانبان':'جدول برنامه‌ریزی',board?(synced?'کارت را باز کنید یا به ستون وضعیت جدید بکشید.':'جابه‌جایی کارت‌ها پس از دریافت داده‌های Supabase فعال می‌شود.'):'مسئول، موعد و وضعیت اقدامات همه سینماها','<button data-go="'+(board?'list':'board')+'">'+(board?'نمای جدول':'نمای برد')+'</button>')+
+  return heading(board?'برد کانبان':'جدول برنامه‌ریزی',board?(synced?'کارت را باز کنید یا به ستون وضعیت جدید بکشید.':'جابه‌جایی کارت‌ها پس از دریافت داده‌های Supabase فعال می‌شود.'):'مسئول، موعد و وضعیت اقدامات همه سینماها','<div class="tabs">'+addButton+'<button data-go="'+(board?'list':'board')+'">'+(board?'نمای جدول':'نمای برد')+'</button></div>')+
   `<div class="filters"><input id="query" aria-label="جست‌وجوی اقدام" placeholder="جست‌وجو در متن، سینما یا شناسه" value="${esc(filters.q)}">${select('cinema','همه سینماها',names.map((n,i)=>[i,n]))}${select('kind','همه انواع',['عمومی','اختصاصی'].map(n=>[n,n]))}${select('status','همه وضعیت‌ها',statuses.map((n,i)=>[i,n]))}${select('attention','همه موعدها و موانع',[['any','نیازمند پیگیری'],['late','معوق'],['blocked','دارای مانع']])}${select('owner','همه مسئولان',[...new Set(all().map(t=>t.owner))].filter(Boolean).map(n=>[n,n]))}</div><div id="results">${result(board)}</div>`;
 }
 function badges(t) {
@@ -119,16 +125,17 @@ function docsPage() {
 function commonPage() {
   const rows=all().filter(t=>t.kind==='عمومی');
   return heading('اقدامات عمومی','پیگیری اجرای هر اقدام در هشت سینما')+
-  `<section class="panel padded">${documentBody(DOCS[0])}</section>`+general.map((row,i)=>`<section class="panel"><div class="section-head"><h2>${esc(row[1])}</h2></div>${table(rows.filter(t=>t.id.endsWith('-'+(i+1))))}</section>`).join('');
+  `<section class="panel padded">${documentBody(DOCS[0])}</section>`+general.map((row,i)=>`<section class="panel"><div class="section-head"><h2>${esc(row[1])}</h2></div>${table(rows.filter(t=>t.id.startsWith('G')&&t.id.endsWith('-'+(i+1))))}</section>`).join('')+
+  (rows.some(t=>addedId.test(t.id))?`<section class="panel"><div class="section-head"><h2>اقدامات عمومی افزوده‌شده</h2></div>${table(rows.filter(t=>addedId.test(t.id)))}</section>`:'');
 }
 function cinemaPage() {
   const group=groups[0].includes(cinema)?0:1, rows=all().filter(t=>t.cinema===cinema);
   const own=rows.filter(t=>t.kind==='اختصاصی'), shared=rows.filter(t=>t.kind==='عمومی');
   const idx=contextIndexes[cinema];
-  return heading('سینما '+names[cinema],esc(DOCS[2].find(Array.isArray)[group][0]))+
+  return heading('سینما '+names[cinema],esc(DOCS[2].find(Array.isArray)[group][0]),addButton)+
   `<div class="tabs">${[['actions','اقدامات'],['profile','شرح وضعیت']].map(([id,label])=>`<button data-tab="${id}" class="${tab===id?'active':''}">${label}</button>`).join('')}</div>`+
   (cinema===0?`<section class="panel padded"><h2>هدف سفارش در دوره ۴۰روزه</h2><p>۳٬۹۷۶ تا ۴٬۰۹۰ سفارش · رشد هدف ۵ تا ۸ درصد</p><small>مبنای مقایسه: ۲٬۲۷۲ سفارش در ۲۴ روز آبان، معادل حدود ۳٬۷۸۷ سفارش در ۴۰ روز.</small></section>`:'')+
-  (tab==='actions'&&!own.length?`<div class="panel">${empty('برای این سینما اقدام اختصاصی در اسناد مبنا ثبت نشده است.')}</div>`:'')+
+  (tab==='actions'&&!own.length?`<div class="panel">${empty('برای این سینما اقدام اختصاصی فعال وجود ندارد.')}</div>`:'')+
   (tab==='profile'?`<div class="panel padded">${idx===undefined?empty('شرح وضعیت این سینما در اسناد مبنا ارائه نشده است.'):documentBody(DOCS[2].slice(idx,contextIndexes[cinema+1]))}</div>`:
   [[own,'اقدامات اختصاصی'],[shared,'اقدامات عمومی']].filter(([r])=>r.length).map(([r,label])=>`<section class="panel"><div class="section-head"><h2>${label}</h2><small>${fa(count(r,t=>t.status===3))} از ${fa(r.length)} تکمیل</small></div>${table(r)}</section>`).join(''));
 }
@@ -144,8 +151,16 @@ function weeklyPage() {
 }
 const progress = t => t.status===3?100:(t.progress ?? [0,0,0,100][t.status]);
 function openTask(id) {
-  const t=all().find(x=>x.id===id); if(!t)return;
-  $('detail').innerHTML=`<form id="taskForm" data-id="${id}"><div class="section-head"><div><small>${ic('docs')} ${names[t.cinema]} / ${t.kind} / ${id} · ردیف ${esc(t.number)}</small><h2 class="source">${esc(t.title)}</h2></div><button type="button" data-close aria-label="بستن">×</button></div><div class="padded">${t.body?`<p class="source">${esc(t.body)}</p>`:''}<fieldset class="fields" style="border:0;padding:0;margin:0" ${synced?'':'disabled'}>
+  const creating=!id;
+  if(creating&&!synced){toast('ابتدا داده‌های Supabase را دریافت کنید.');return;}
+  const defaultCinema=route==='cinema'?cinema:filters.cinema;
+  const t=creating?{...initialTracking,id:'N-'+crypto.randomUUID(),cinema:defaultCinema,kind:filters.kind||'اختصاصی',title:'',body:''}:all().find(x=>x.id===id);
+  if(!t)return;
+  $('detail').innerHTML=`<form id="taskForm" data-id="${t.id}" data-creating="${creating}"><div class="section-head"><div>${creating?'':`<small>${ic('docs')} ${names[t.cinema]} / ${t.kind}</small>`}<h2 class="source">${creating?'افزودن اقدام':'ویرایش اقدام'}</h2></div><button type="button" data-close aria-label="بستن">×</button></div><div class="padded"><fieldset class="fields" style="border:0;padding:0;margin:0" ${synced?'':'disabled'}>
+  ${creating?`<label>سینما<select name="cinema" required>${option('','انتخاب سینما',t.cinema)}${names.map((name,i)=>option(i,name,t.cinema)).join('')}</select></label>
+  <label>نوع اقدام<select name="kind">${['اختصاصی','عمومی'].map(kind=>option(kind,kind,t.kind)).join('')}</select></label>`:''}
+  <label class="wide">عنوان اقدام<input name="title" required maxlength="250" value="${esc(t.title)}"></label>
+  <label class="wide">شرح اقدام<textarea name="body" maxlength="6000">${esc(t.body)}</textarea></label>
   <label>مسئول<input name="owner" value="${esc(t.owner)}"></label>
   <label>شروع اجرا<select name="start"><option value="">تعیین نشده</option>${Array.from({length:40},(_,i)=>option(i+1,day(i+1),t.start)).join('')}</select></label>
   <label>موعد اجرا<select name="due"><option value="">تعیین نشده</option>${Array.from({length:40},(_,i)=>option(i+1,day(i+1),t.due)).join('')}</select></label>
@@ -155,7 +170,7 @@ function openTask(id) {
   <label class="wide">خروجی مورد انتظار<textarea name="output">${esc(t.output)}</textarea></label>
   <label class="wide">${ic('list')} آخرین پیگیری / گام بعدی<textarea name="note">${esc(t.note)}</textarea></label>
   <label class="wide">مستند اجرا یا پیوند آن<textarea name="evidence">${esc(t.evidence)}</textarea></label>
-  </fieldset><details><summary>تاریخچه تغییرات (${fa(t.history.length)})</summary>${t.history.map(item=>`<div><small>${esc(item.date)}</small>${esc(item.text)}</div>`).join('')||'تغییری ثبت نشده است.'}</details></div><footer>${synced?'<button class="primary" type="submit">ذخیره تغییرات</button>':'<button class="primary" type="button" data-connect>دریافت آخرین اطلاعات</button>'}<button type="button" data-close>بستن</button></footer></form>`;
+  </fieldset><details><summary>تاریخچه تغییرات (${fa(t.history.length)})</summary>${t.history.map(item=>`<div><small>${esc(item.date)}</small>${esc(item.text)}</div>`).join('')||'تغییری ثبت نشده است.'}</details></div><footer>${synced?`<button class="primary" type="submit">${creating?'افزودن اقدام':'ذخیره تغییرات'}</button>${creating?'':`<button type="button" class="pill red" data-delete="${t.id}">حذف اقدام</button>`}`:'<button class="primary" type="button" data-connect>دریافت آخرین اطلاعات</button>'}<button type="button" data-close>بستن</button></footer></form>`;
   $('detail').showModal();
 }
 let toastTimer;
@@ -163,16 +178,17 @@ function toast(message) {
   $('toast').textContent=message; $('toast').classList.add('show');
   clearTimeout(toastTimer); toastTimer=setTimeout(()=>$('toast').classList.remove('show'),3000);
 }
-async function updateTask(id,changes) {
+async function updateTask(id,changes,creating=false) {
   if(!synced||syncing){toast('ابتدا منتظر دریافت اطلاعات از Supabase بمانید.');return false;}
   if(pending.has(id)) return false;
   const old=all().find(t=>t.id===id);
-  const fieldNames={status:'وضعیت',due:'موعد',owner:'مسئول',blocked:'مانع',note:'پیگیری',output:'خروجی',evidence:'مستند',start:'شروع',progress:'پیشرفت'};
-  const changed=Object.keys(changes).filter(k=>changes[k]!==old[k]);
+  if(!old&&!creating)return false;
+  const fieldNames={status:'وضعیت',due:'موعد',owner:'مسئول',blocked:'مانع',note:'پیگیری',output:'خروجی',evidence:'مستند',start:'شروع',progress:'پیشرفت',title:'عنوان',body:'شرح'};
+  const changed=Object.keys(changes).filter(k=>changes[k]!==old?.[k]);
   if(!changed.length)return true;
   const value=(k,v)=>k==='status'?statuses[v]:(k==='due'||k==='start')?(v?day(v):'تعیین نشده'):k==='blocked'?(v?'دارد':'رفع شد'):v||'خالی';
-  const text=changed.map(k=>`${fieldNames[k]} از «${value(k,old[k])}» به «${value(k,changes[k])}»`).join('، ');
-  const next={...cloudEdits[id],...changes,history:[{date:new Intl.DateTimeFormat('fa-IR',{dateStyle:'short',timeStyle:'short',timeZone:'Asia/Tehran'}).format(new Date()),text},...old.history]};
+  const text=creating?'اقدام افزوده شد.':changes.deleted?'اقدام حذف شد.':changed.map(k=>`${fieldNames[k]} از «${value(k,old[k])}» به «${value(k,changes[k])}»`).join('، ');
+  const next={...cloudEdits[id],...changes,history:[{date:new Intl.DateTimeFormat('fa-IR',{dateStyle:'short',timeStyle:'short',timeZone:'Asia/Tehran'}).format(new Date()),text},...(old?.history||[])]};
   pending.add(id);
   try {
     const saved=await CinemaCloud.save(id,next,revisions[id]||0);
@@ -190,10 +206,14 @@ async function updateTask(id,changes) {
   toast('تغییرات در Supabase ذخیره شد.');
   return true;
 }
-document.addEventListener('click',e=>{
+document.addEventListener('click',async e=>{
   const b=e.target.closest('button'); if(!b)return;
   if(b.dataset.go)go(b.dataset.go,b.dataset.cinema);
   if(b.dataset.task)openTask(b.dataset.task);
+  if(b.hasAttribute('data-add'))openTask();
+  if(b.dataset.delete&&window.confirm('این اقدام برای همه کاربران از داشبورد حذف شود؟')){
+    if(await updateTask(b.dataset.delete,{deleted:true}))$('detail').close();
+  }
   if(b.hasAttribute('data-home-mode')){homeMode=homeMode==='cards'?'table':'cards';render();}
   if(b.hasAttribute('data-close'))$('detail').close();
   if(b.hasAttribute('data-connect')){$('detail').close();$('account').click();}
@@ -216,7 +236,15 @@ document.addEventListener('submit',async e=>{
   const f=new FormData(e.target);
   const start=+f.get('start')||null,due=+f.get('due')||null,status=+f.get('status'),owner=f.get('owner').trim();
   if(start&&due&&start>due){toast('شروع اجرا باید تا موعد انجام باشد.');return;}
-  if(await updateTask(e.target.dataset.id,{owner,start,due,status,progress:status===3?100:+f.get('progress'),blocked:f.has('blocked'),output:f.get('output'),note:f.get('note'),evidence:f.get('evidence')}))$('detail').close();
+  const title=f.get('title').trim();
+  if(!title){toast('عنوان اقدام را وارد کنید.');return;}
+  const creating=e.target.dataset.creating==='true';
+  const placement=creating?{cinema:Number(f.get('cinema')),kind:f.get('kind')}:{};
+  const changes={...placement,title,body:f.get('body').trim(),owner,start,due,status,progress:status===3?100:+f.get('progress'),blocked:f.has('blocked'),output:f.get('output'),note:f.get('note'),evidence:f.get('evidence')};
+  if(await updateTask(e.target.dataset.id,changes,creating)){
+    $('detail').close();
+    if(creating&&(route==='board'||route==='list')){filters={q:'',cinema:'',kind:'',status:'',attention:'',owner:''};render();}
+  }
 });
 document.addEventListener('dragstart',e=>{const c=e.target.closest('.card');if(c&&synced)e.dataTransfer.setData('text/plain',c.dataset.task);});
 document.addEventListener('dragover',e=>{const lane=e.target.closest('.lane');if(lane&&synced){e.preventDefault();lane.classList.add('over');}});
@@ -224,7 +252,7 @@ document.addEventListener('dragleave',e=>{const lane=e.target.closest('.lane');i
 document.addEventListener('drop',e=>{
   const lane=e.target.closest('.lane');if(!lane)return;
   e.preventDefault();lane.classList.remove('over');
-  const id=e.dataTransfer.getData('text/plain');if(tasks.some(t=>t.id===id))updateTask(id,{status:+lane.dataset.lane,...(+lane.dataset.lane===3?{progress:100}:{})});
+  const id=e.dataTransfer.getData('text/plain');if(all().some(t=>t.id===id))updateTask(id,{status:+lane.dataset.lane,...(+lane.dataset.lane===3?{progress:100}:{})});
 });
 render();
 
@@ -244,7 +272,7 @@ async function refreshCloud(afterConflict=false) {
 }
 function readChanges(raw) {
   const data=raw||{},changes={};
-  for(const key of ['owner','note','output','evidence']) {
+  for(const key of ['owner','note','output','evidence','title','body']) {
     if(typeof data[key]==='string') changes[key]=data[key];
   }
   for(const key of ['due','start']) {
@@ -252,6 +280,9 @@ function readChanges(raw) {
   }
   if(Number.isInteger(data.status)&&data.status>=0&&data.status<=3) changes.status=data.status;
   if(Number.isInteger(data.progress)&&data.progress>=0&&data.progress<=100) changes.progress=data.progress;
+  if(typeof data.deleted==='boolean') changes.deleted=data.deleted;
+  if(Number.isInteger(data.cinema)&&data.cinema>=0&&data.cinema<names.length) changes.cinema=data.cinema;
+  if(['عمومی','اختصاصی'].includes(data.kind)) changes.kind=data.kind;
   if(typeof data.blocked==='boolean') changes.blocked=data.blocked;
   if(Array.isArray(data.history)) changes.history=data.history.filter(item=>typeof item?.date==='string'&&typeof item?.text==='string');
   return changes;
@@ -265,3 +296,4 @@ $('theme').onclick=()=>{
   try {localStorage.setItem('bahman-theme',document.body.dataset.theme);} catch {}
 };
 refreshCloud().catch(()=>toast('اتصال به Supabase برقرار نشد. دوباره تلاش کنید.'));
+
