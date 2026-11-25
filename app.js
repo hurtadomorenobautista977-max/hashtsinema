@@ -74,6 +74,7 @@ function render() {
   $('crumb').textContent='بهمن سبز / هشت سینما / '+label;
   const pages={home:overview,list:()=>work(false),board:()=>work(true),cinema:cinemaPage,common:commonPage,docs:docsPage,calendar:calendarPage,weekly:weeklyPage};
   $('view').innerHTML=pages[route]();
+  window.CinemaCRM?.show($('crmView'), route === 'cinema' && tab === 'crm' ? cinema : null);
 }
 function overview() {
   const rows=all(), done=count(rows,t=>t.status===3), overdue=count(rows,late), blocked=count(rows,t=>t.blocked&&t.status!==3);
@@ -132,9 +133,10 @@ function cinemaPage() {
   const group=groups[0].includes(cinema)?0:1, rows=all().filter(t=>t.cinema===cinema);
   const own=rows.filter(t=>t.kind==='اختصاصی'), shared=rows.filter(t=>t.kind==='عمومی');
   const idx=contextIndexes[cinema];
-  return heading('سینما '+names[cinema],esc(DOCS[2].find(Array.isArray)[group][0]),addButton)+
-  `<div class="tabs">${[['actions','اقدامات'],['profile','شرح وضعیت']].map(([id,label])=>`<button data-tab="${id}" class="${tab===id?'active':''}">${label}</button>`).join('')}</div>`+
-  (cinema===0?`<section class="panel padded"><h2>هدف سفارش در دوره ۴۰روزه</h2><p>۳٬۹۷۶ تا ۴٬۰۹۰ سفارش · رشد هدف ۵ تا ۸ درصد</p><small>مبنای مقایسه: ۲٬۲۷۲ سفارش در ۲۴ روز آبان، معادل حدود ۳٬۷۸۷ سفارش در ۴۰ روز.</small></section>`:'')+
+  const header=heading('سینما '+names[cinema],esc(DOCS[2].find(Array.isArray)[group][0]),tab==='crm'?'':addButton)+
+  `<div class="tabs">${[['actions','اقدامات'],['profile','شرح وضعیت'],['crm','CRM و سوابق تماس']].map(([id,label])=>`<button data-tab="${id}" class="${tab===id?'active':''}">${label}</button>`).join('')}</div>`;
+  if(tab==='crm')return header;
+  return header+(cinema===0?`<section class="panel padded"><h2>هدف سفارش در دوره ۴۰روزه</h2><p>۳٬۹۷۶ تا ۴٬۰۹۰ سفارش · رشد هدف ۵ تا ۸ درصد</p><small>مبنای مقایسه: ۲٬۲۷۲ سفارش در ۲۴ روز آبان، معادل حدود ۳٬۷۸۷ سفارش در ۴۰ روز.</small></section>`:'')+
   (tab==='actions'&&!own.length?`<div class="panel">${empty('برای این سینما اقدام اختصاصی فعال وجود ندارد.')}</div>`:'')+
   (tab==='profile'?`<div class="panel padded">${idx===undefined?empty('شرح وضعیت این سینما در اسناد مبنا ارائه نشده است.'):documentBody(DOCS[2].slice(idx,contextIndexes[cinema+1]))}</div>`:
   [[own,'اقدامات اختصاصی'],[shared,'اقدامات عمومی']].filter(([r])=>r.length).map(([r,label])=>`<section class="panel"><div class="section-head"><h2>${label}</h2><small>${fa(count(r,t=>t.status===3))} از ${fa(r.length)} تکمیل</small></div>${table(r)}</section>`).join(''));

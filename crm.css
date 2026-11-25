@@ -1,0 +1,88 @@
+.cinema-crm {
+  background: var(--surface, #fff);
+  border: 1px solid var(--line, #dce8e1);
+  border-radius: 17px;
+  margin-block: 16px;
+  padding: 16px;
+  min-width: 0;
+}
+.cinema-crm .crm-heading, .cinema-crm .crm-footer, .cinema-crm .crm-calendar-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.cinema-crm h2, .cinema-crm h3 { margin: 0; font-size: 17px; }
+.cinema-crm .crm-footer { justify-content: flex-end; margin-block-start: 4px; }
+.cinema-crm .crm-button, .cinema-crm select, .cinema-crm input, .cinema-crm textarea {
+  font: inherit;
+  color: inherit;
+  background: transparent;
+  border: 1px solid var(--line, #dce8e1);
+  border-radius: 10px;
+  padding: 8px 12px;
+  min-height: 38px;
+}
+.cinema-crm .crm-button { font-weight: 700; cursor: pointer; }
+.cinema-crm .crm-button:disabled { opacity: .55; cursor: wait; }
+.cinema-crm .crm-primary { color: #fff; background: #087762; border-color: #087762; }
+.cinema-crm button:focus-visible, .cinema-crm input:focus-visible,
+.cinema-crm select:focus-visible, .cinema-crm textarea:focus-visible {
+  outline: 2px solid #16977d;
+  outline-offset: 2px;
+}
+.cinema-crm .crm-history { display: grid; gap: 10px; }
+.cinema-crm .crm-history:not(:empty) { margin-block-start: 12px; }
+.cinema-crm .crm-entry { padding: 12px; border: 1px solid var(--line, #dce8e1); border-radius: 12px; }
+.cinema-crm .crm-entry-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; }
+.cinema-crm .crm-entry-meta time { color: #075d4d; background: #e7f5ee; border-radius: 20px; padding: 3px 9px; }
+.cinema-crm .crm-entry p { margin: 7px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.9; }
+.cinema-crm .crm-empty, .cinema-crm .crm-status { margin: 0; color: var(--muted, #53675e); }
+.cinema-crm .crm-status:not(:empty) { margin-block: 8px; }
+.cinema-crm .crm-dialog {
+  position: fixed;
+  inset: 0;
+  margin: auto;
+  color: var(--text, var(--ink, #19372f));
+  background: var(--surface, #fff);
+  border: 1px solid var(--line, #dce8e1);
+  border-radius: 17px;
+  width: min(610px, calc(100% - 24px));
+  max-height: calc(100dvh - 24px);
+  overflow: auto;
+  padding: 17px;
+  box-shadow: 0 18px 55px #102b2544;
+}
+.cinema-crm .crm-dialog::backdrop { background: #152e2773; }
+.cinema-crm .crm-form { display: grid; gap: 14px; margin-block-start: 14px; }
+.cinema-crm .crm-name-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.cinema-crm .crm-field { display: grid; gap: 5px; min-width: 0; }
+.cinema-crm .crm-field > label, .cinema-crm #crm-date-label { font-weight: 800; }
+.cinema-crm .crm-field > small { color: var(--muted, #53675e); }
+.cinema-crm .crm-tag { border-radius: 22px; background: #e7f5ee; color: #075d4d; width: 100%; }
+.cinema-crm .crm-add-name { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 5px; }
+.cinema-crm .crm-add-name .crm-button { padding-inline: 8px; }
+.cinema-crm .crm-date { display: flex; justify-content: space-between; text-align: start; width: min(100%, 245px); }
+.cinema-crm textarea { width: 100%; resize: vertical; }
+.cinema-crm .crm-calendar { width: min(370px, calc(100% - 24px)); }
+.cinema-crm .crm-calendar-nav { margin-block: 12px; }
+.cinema-crm .crm-calendar-nav button { font-size: 19px; line-height: 1; }
+.cinema-crm .crm-days { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 3px; text-align: center; }
+.cinema-crm .crm-days abbr { text-decoration: none; padding: 4px 0; }
+.cinema-crm .crm-days button {
+  color: inherit;
+  font: inherit;
+  border: 1px solid transparent;
+  background: transparent;
+  border-radius: 9px;
+  min-height: 36px;
+  cursor: pointer;
+}
+.cinema-crm .crm-days button:hover { background: #e7f5ee; color: #075d4d; }
+.cinema-crm .crm-days [aria-current="date"] { border-color: #087762; }
+.cinema-crm .crm-days [aria-pressed="true"] { background: #087762; color: #fff; }
+@media (max-width: 520px) {
+  .cinema-crm .crm-name-grid { grid-template-columns: 1fr; }
+}
+.cinema-crm .crm-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 7px; }
+.cinema-crm .crm-login { max-width: 360px; }
