@@ -101,11 +101,12 @@ window.CinemaCRM = (() => {
     let entries;
     const formatRows = rows => rows.map(entry => `
       <article class="crm-entry">
-        <div class="crm-entry-meta"><time datetime="${escape(entry.call_date)}">${longDate(fromIso(entry.call_date))}</time>
-          <span>تماس‌گیرنده <strong>${escape(entry.caller)}</strong></span>
-          <span>طرف تماس <strong>${escape(entry.contact)}</strong></span>
+        <div class="crm-entry-meta">
+          ${entry.call_date ? `<time datetime="${escape(entry.call_date)}">${longDate(fromIso(entry.call_date))}</time>` : '<span>بدون تاریخ</span>'}
+          ${entry.caller ? `<span>تماس‌گیرنده <strong>${escape(entry.caller)}</strong></span>` : ''}
+          ${entry.contact ? `<span>طرف تماس <strong>${escape(entry.contact)}</strong></span>` : ''}
         </div>
-        <p dir="auto">${escape(entry.report)}</p>
+        ${entry.report ? `<p dir="auto">${escape(entry.report)}</p>` : ''}
       </article>`).join('');
     function showHistory() {
       history.innerHTML = entries.length ? formatRows(entries) : '<p class="crm-empty">هنوز تماسی برای این سینما ثبت نشده است.</p>';
@@ -142,19 +143,20 @@ window.CinemaCRM = (() => {
       } finally {
         open.disabled = false;
       }
-      if (!root.isConnected) return;
+      if (!formDialog.isConnected) return;
       status.textContent = '';
       formDialog.innerHTML = `
         <div class="crm-heading"><h3 id="crm-form-title">ثبت تماس جدید</h3><button type="button" class="crm-button" data-cancel aria-label="بستن فرم">×</button></div>
         <form class="crm-form">
           <div class="crm-name-grid">
             ${nameFields.map(field => `<div class="crm-field"><label for="crm-${field.key}">${field.label}</label><small>${field.help}</small>
-              <select class="crm-tag" id="crm-${field.key}" name="${field.key}" required></select>
+              <select class="crm-tag" id="crm-${field.key}" name="${field.key}"></select>
               <div class="crm-add-name"><input type="text" maxlength="100" placeholder="نام جدید" aria-label="نام جدید ${field.label}"><button class="crm-button" type="button" data-crm-add="${field.key}">افزودن تگ</button></div>
             </div>`).join('')}
           </div>
-          <div class="crm-field"><span id="crm-date-label">تاریخ تماس</span><button class="crm-button crm-date" type="button" aria-labelledby="crm-date-label crm-date-value" data-date><span id="crm-date-value">${longDate(date)}</span><span aria-hidden="true">▦</span></button></div>
-          <div class="crm-field"><label for="crm-report">گزارش تماس</label><textarea id="crm-report" name="report" rows="5" maxlength="20000" placeholder="خلاصه صحبت‌ها را بنویسید" required></textarea></div>
+          <div class="crm-field"><span id="crm-date-label">تاریخ تماس</span><button class="crm-button crm-date" type="button" aria-labelledby="crm-date-label crm-date-value" data-date><span id="crm-date-value">${longDate(date)}</span><span aria-hidden="true">▦</span></button>
+            <div><button class="crm-button" type="button" data-crm-clear-date>پاک کردن تاریخ</button></div></div>
+          <div class="crm-field"><label for="crm-report">گزارش تماس</label><textarea id="crm-report" name="report" rows="5" maxlength="20000" placeholder="خلاصه صحبت‌ها را بنویسید"></textarea></div>
           <p class="crm-status" role="status"></p>
           <div class="crm-footer"><button type="button" class="crm-button" data-cancel>انصراف</button><button type="submit" class="crm-button crm-primary">ذخیره تماس</button></div>
         </form>`;
@@ -210,22 +212,26 @@ window.CinemaCRM = (() => {
       }
       formDialog.querySelectorAll('[data-cancel]').forEach(b => b.onclick = () => formDialog.close());
       formDialog.oncancel = event => { if (pending) event.preventDefault(); };
-      form.querySelector('[data-date]').onclick = () => openCalendar(calendar, date, picked => {
-        date = picked;
-        form.querySelector('#crm-date-value').textContent = longDate(date);
-      });
+      const dateValue = form.querySelector('#crm-date-value');
+      const clearDate = form.querySelector('[data-crm-clear-date]');
+      function selectDate(value) {
+        date = value;
+        dateValue.textContent = date === null ? 'انتخاب تاریخ' : longDate(date);
+        clearDate.hidden = date === null;
+      }
+      clearDate.onclick = () => {
+        selectDate(null);
+        form.querySelector('[data-date]').focus();
+      };
+      form.querySelector('[data-date]').onclick = () => openCalendar(calendar, date ?? today(), selectDate);
       form.onsubmit = async event => {
         event.preventDefault();
         if (pending) return;
-        const report = form.elements.report.value.trim();
-        if (!report) {
-          form.elements.report.focus();
-          formStatus.textContent = 'گزارش تماس را بنویسید.';
-          return;
-        }
         const payload = {
-          caller: form.elements.caller.value, contact: form.elements.contact.value,
-          call_date: iso(date), report
+          caller: form.elements.caller.value || null,
+          contact: form.elements.contact.value || null,
+          call_date: date === null ? null : iso(date),
+          report: form.elements.report.value.trim() || null
         };
         const fingerprint = JSON.stringify(payload);
         if (lastSubmission?.fingerprint !== fingerprint) {
@@ -252,6 +258,7 @@ window.CinemaCRM = (() => {
 
   let db;
   let activeCinema = null;
+  const crmRoot = () => document.getElementById('crmView');
   let viewRequest = 0;
 
   async function rows(query) {
@@ -280,7 +287,7 @@ window.CinemaCRM = (() => {
       for (let offset = 0; ; offset += pageSize) {
         const page = await rows(db.from('eight_cinemas_crm_calls')
           .select('call_date,caller,contact,report').eq('cinema_id', cinemaId)
-          .order('call_date', { ascending: false }).order('created_at', { ascending: false })
+          .order('call_date', { ascending: false, nullsFirst: false }).order('created_at', { ascending: false })
           .order('id', { ascending: false }).range(offset, offset + pageSize - 1));
         calls.push(...page);
         if (page.length < pageSize) return calls;
@@ -301,16 +308,36 @@ window.CinemaCRM = (() => {
         <div class="crm-field"><label for="crm-email">ایمیل حساب</label><input type="email" id="crm-email" name="email" dir="ltr" autocomplete="username" required></div>
         <div class="crm-field"><label for="crm-password">رمز عبور</label><input type="password" id="crm-password" name="password" dir="ltr" autocomplete="current-password" required></div>
         <p class="crm-status" role="status"></p>
-        <div><button class="crm-button crm-primary" type="submit">ورود به CRM</button></div>
+        <div class="crm-actions">
+          <button class="crm-button crm-primary" type="submit">ورود به CRM</button>
+          <button class="crm-button" type="button" data-recover>رمز عبور را فراموش کردم</button>
+        </div>
       </form>`;
     const form = root.querySelector('form');
     const submit = form.querySelector('[type="submit"]');
     const status = form.querySelector('[role="status"]');
+    const recover = form.querySelector('[data-recover]');
+    recover.onclick = async () => {
+      const email = form.elements.email;
+      if (!email.reportValidity()) return;
+      submit.disabled = recover.disabled = true;
+      status.textContent = 'در حال درخواست لینک بازیابی…';
+      try {
+        const redirectTo = new URL('./', location.href).href;
+        const { error } = await db.auth.resetPasswordForEmail(email.value.trim(), { redirectTo });
+        if (error) throw error;
+        status.textContent = 'اگر حساب فعال باشد، لینک بازیابی به ایمیل شما ارسال می‌شود.';
+      } catch {
+        status.textContent = 'درخواست بازیابی انجام نشد. کمی بعد دوباره تلاش کنید.';
+      } finally {
+        submit.disabled = recover.disabled = false;
+      }
+    };
     form.onsubmit = async event => {
       event.preventDefault();
       if (submit.disabled) return;
       status.textContent = '';
-      submit.disabled = true;
+      submit.disabled = recover.disabled = true;
       try {
         const { data, error } = await db.auth.signInWithPassword({
           email: form.elements.email.value.trim(), password: form.elements.password.value
@@ -323,9 +350,80 @@ window.CinemaCRM = (() => {
           ? 'ایمیل یا رمز عبور درست نیست.'
           : 'ورود به CRM انجام نشد. دوباره تلاش کنید.';
       } finally {
+        submit.disabled = recover.disabled = false;
+      }
+    };
+  }
+
+  function recoveryDialog() {
+    const container = document.createElement('div');
+    container.className = 'cinema-crm';
+    container.style.display = 'contents';
+    container.innerHTML = `
+      <dialog class="crm-dialog" aria-labelledby="crm-recovery-title">
+        <h2 id="crm-recovery-title">انتخاب رمز عبور جدید</h2>
+        <form class="crm-form">
+          <div class="crm-field"><label for="crm-new-password">رمز جدید</label>
+            <input type="password" id="crm-new-password" name="password" dir="ltr" minlength="6" autocomplete="new-password" required></div>
+          <div class="crm-field"><label for="crm-confirm-password">تکرار رمز جدید</label>
+            <input type="password" id="crm-confirm-password" name="confirmation" dir="ltr" minlength="6" autocomplete="new-password" required></div>
+          <p class="crm-status" role="status"></p>
+          <div class="crm-footer"><button type="submit" class="crm-button crm-primary">ذخیره رمز جدید</button></div>
+        </form>
+      </dialog>`;
+    document.body.append(container);
+    const dialog = container.querySelector('dialog');
+    const form = dialog.querySelector('form');
+    const status = form.querySelector('[role="status"]');
+    const submit = form.querySelector('button');
+    dialog.oncancel = event => event.preventDefault();
+    dialog.onclose = () => container.remove();
+    form.onsubmit = async event => {
+      event.preventDefault();
+      if (submit.disabled) return;
+      const { password, confirmation } = form.elements;
+      if (password.value !== confirmation.value) {
+        status.textContent = 'رمز جدید و تکرار آن یکسان نیستند.';
+        confirmation.focus();
+        return;
+      }
+      submit.disabled = true;
+      status.textContent = '';
+      try {
+        const { error } = await db.auth.updateUser({ password: password.value });
+        if (error) throw error;
+        form.reset();
+        form.onsubmit = event => event.preventDefault();
+        status.textContent = 'رمز جدید ذخیره شد. از منوی سینماها وارد CRM شوید.';
+        submit.type = 'button';
+        submit.textContent = 'رفتن به داشبورد';
+        submit.onclick = () => dialog.close();
+        password.disabled = confirmation.disabled = true;
+      } catch (error) {
+        status.textContent = error.code === 'weak_password' ? 'رمز قوی‌تری انتخاب کنید.'
+          : error.code === 'same_password' ? 'رمز جدید باید با رمز قبلی فرق داشته باشد.'
+          : 'ذخیرهٔ رمز انجام نشد. دوباره تلاش کنید.';
+      } finally {
         submit.disabled = false;
       }
     };
+    dialog.showModal();
+  }
+
+  function connect() {
+    if (db) return;
+    const { url, key } = window.CINEMA_SUPABASE;
+    db = window.supabase.createClient(url, key);
+    db.auth.onAuthStateChange(event => {
+      if (event === 'PASSWORD_RECOVERY') {
+        recoveryDialog();
+        return;
+      }
+      if (event !== 'SIGNED_OUT' || activeCinema === null) return;
+      const selected = activeCinema;
+      activeCinema = null;
+      show(crmRoot(), selected);
+    });
   }
 
   function show(root, cinemaId) {
@@ -351,16 +449,7 @@ window.CinemaCRM = (() => {
       root.querySelector('button').onclick = () => location.reload();
       return;
     }
-    if (!db) {
-      const { url, key } = window.CINEMA_SUPABASE;
-      db = window.supabase.createClient(url, key);
-      db.auth.onAuthStateChange(event => {
-        if (event !== 'SIGNED_OUT' || activeCinema === null) return;
-        const selected = activeCinema;
-        activeCinema = null;
-        show(root, selected);
-      });
-    }
+    connect();
     const signOut = async event => {
       const button = event.currentTarget;
       button.disabled = true;
@@ -394,6 +483,10 @@ window.CinemaCRM = (() => {
       console.error('CRM membership:', error);
       if (current()) showFailure('بررسی دسترسی CRM انجام نشد.');
     });
+  }
+
+  if (new URLSearchParams(location.hash.slice(1)).get('type') === 'recovery' && window.supabase?.createClient) {
+    connect();
   }
 
   return { show };
